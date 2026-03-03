@@ -60,12 +60,6 @@
 - **前端路径简化** - 以根路径页面为主流程（`/`、`/admin.html`、`/webdav.html`）
 - **GitHub Actions 镜像构建** - 主分支/Tag 自动构建并推送 `api` + `web` 镜像
 
-### 2026-03 近期更新（微调）
-
-- 后台管理页统一为根路径 `/admin.html`，支持文件夹树与批量文件操作。
-- 新增 `/webdav.html` 独立 WebDAV 页面，UI 与主页风格保持一致。
-- 新增 GitHub 存储方案；移除 Google Drive / OneDrive 适配。
-- Docker 与 Cloudflare Pages 的页面入口保持一致，便于 Fork 后直接部署。
 
 ---
 
@@ -586,41 +580,3 @@ MIT License
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=katelya77/K-Vault&type=Date)](https://star-history.com/#katelya77/K-Vault&Date)
-
-## Docker Storage Backend Update (2026-03)
-
-Docker runtime now includes additional storage adapters:
-
-- `webdav`
-- `github` (`releases` mode and `contents` mode)
-
-Key notes:
-
-- All dynamic storage secrets are still encrypted by `CONFIG_ENCRYPTION_KEY`.
-- `/api/status` now reports `webdav/github` as individual `connected/enabled` states.
-- GitHub mode guidance:
-  - `releases`: preferred for binary files.
-  - `contents`: better for small files/text, subject to tighter API constraints.
-
-Regression helper script:
-
-```bash
-npm run regression:storage
-```
-
-Optional smoke create/update test:
-
-```bash
-BASE_URL=http://localhost:8080 \
-BASIC_USER=admin BASIC_PASS=your_password \
-SMOKE_STORAGE_TYPE=webdav \
-SMOKE_STORAGE_CONFIG_JSON='{"baseUrl":"https://dav.example.com","username":"u","password":"p"}' \
-node scripts/storage-regression.js
-```
-
-Checklist covered by script:
-
-- `health` / `status`
-- `login` with both payloads (`username/password`, `user/pass`)
-- storage `list/create/update/test/default`
-- `upload/download/delete` for enabled storages

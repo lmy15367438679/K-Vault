@@ -125,13 +125,44 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
+      flex-wrap: nowrap;
       padding: 10px 12px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.06);
       font-weight: 600;
       color: #4c3b7a;
     }
+    .folder-head-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 0 1 auto;
+      white-space: nowrap;
+      font-size: 18px;
+      line-height: 1;
+      overflow: hidden;
+    }
+    .folder-head-title i {
+      flex: 0 0 auto;
+      font-size: 18px;
+    }
+    .folder-head-title span {
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .folder-head-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+      margin-left: auto;
+    }
     .folder-head .el-button {
-      padding: 5px 8px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      margin: 0 !important;
     }
     .folder-current {
       padding: 8px 12px;
@@ -486,8 +517,8 @@
         <div class="disk-layout">
           <aside class="folder-sidebar">
             <div class="folder-head">
-              <span><i class="fas fa-folder-tree"></i> 目录管理</span>
-              <span>
+              <span class="folder-head-title"><i class="fas fa-folder-tree"></i><span>目录管理</span></span>
+              <span class="folder-head-actions">
                 <el-button size="mini" circle icon="el-icon-refresh" title="刷新目录与文件" :disabled="folderMutating" :loading="folderLoading" @click="refreshFolderResources"></el-button>
                 <el-button size="mini" circle icon="el-icon-plus" title="新建目录" :disabled="folderMutating" :loading="folderMutatingAction === 'create'" @click="createFolder"></el-button>
                 <el-button size="mini" circle icon="el-icon-edit" title="重命名目录" :disabled="folderMutating || !folderPath" :loading="folderMutatingAction === 'rename'" @click="renameCurrentFolder"></el-button>
@@ -751,8 +782,8 @@
             </template>
             <div class="pagination-container">
               <el-pagination
-                background layout="prev, pager, next"
-                :total="filteredTableData.length" :page-size="pageSize"
+                background layout="total, prev, pager, next"
+                :total="paginationTotal" :page-size="pageSize"
                 @current-change="handlePageChange" :current-page.sync="currentPage" />
             </div>
             <div style="text-align:center;margin-top:16px;">
@@ -869,7 +900,7 @@
       isLoadingMore: false,
       search: '',
       currentPage: 1,
-      pageSize: 100,
+      pageSize: 24,
       selectedFiles: [],
       sortOption: 'dateDesc',
       filterOption: 'all',
@@ -974,6 +1005,15 @@
         return this.sortData(this.filteredTableData)
           .slice((this.currentPage - 1) * this.pageSize, this.currentPage * this.pageSize);
       },
+      useServerTotalForPagination() {
+        return !this.search && this.filterOption === 'all' && this.fileType === 'all';
+      },
+      paginationTotal() {
+        if (this.useServerTotalForPagination) {
+          return Math.max(Number(this.totalCount || 0), this.filteredTableData.length);
+        }
+        return this.filteredTableData.length;
+      },
       paginatedData() {
         return this.paginatedTableData;
       },
@@ -1063,6 +1103,10 @@
         },
         deep: true
       },
+      search() {
+        this.currentPage = 1;
+        this.normalizeCurrentPage();
+      },
       selectedFiles(newValue) {
         if (newValue.length === 0) {
           this.batchToolbarPosition.left = null;
@@ -1079,7 +1123,11 @@
         }
       },
       sortOption(newOption) { localStorage.setItem('sortOption', newOption); },
-      filterOption(newOption) { localStorage.setItem('filterOption', newOption); },
+      filterOption(newOption) {
+        localStorage.setItem('filterOption', newOption);
+        this.currentPage = 1;
+        this.normalizeCurrentPage();
+      },
       viewMode(newValue) { localStorage.setItem('adminViewMode', newValue); },
       folderPath(newValue) { localStorage.setItem('adminFolderPath', this.normalizeFolderPath(newValue)); }
     },
@@ -1165,6 +1213,7 @@
         this.updateStats();
         this.calculatePageSize();
         this.sortData(this.tableData);
+        this.normalizeCurrentPage();
       },
       writeFolderCache(cacheKey) {
         if (!cacheKey) return;
@@ -1963,7 +2012,20 @@
           this.$message.error('退出失败，请重试');
         }
       },
-      handlePageChange(page) { this.currentPage = page; },  // 切换页面
+      async handlePageChange(page) {
+        this.currentPage = page;
+        await this.ensurePageDataForPage(page);
+        this.normalizeCurrentPage();
+      },  // 切换页面
+      async ensurePageDataForPage(page) {
+        if (!this.useServerTotalForPagination) return;
+        const needCount = page * this.pageSize;
+        let guard = 0;
+        while (this.filteredTableData.length < needCount && this.nextCursor && guard < 10) {
+          await this.loadMore({ silent: true, auto: true });
+          guard += 1;
+        }
+      },
       normalizeListItem(file) {
         return {
           ...file,
@@ -1986,7 +2048,8 @@
         this.tableData = Array.from(map.values());
       },
       getListRequestLimit(forLoadMore = false) {
-        return forLoadMore ? 1000 : 100;
+        const basePage = this.isMobileViewport ? 12 : 24;
+        return forLoadMore ? basePage * 4 : basePage * 3;
       },
       buildListQueryParams({ cursor = null, limit = null, includeStats = true } = {}) {
         const params = new URLSearchParams();
@@ -2012,54 +2075,42 @@
         this.currentPage = 1;
         await this.refreshFileList({ syncFolders: true });
       },  // 切换存储类型筛选
-      async loadMore() {
+      async loadMore(options = {}) {
+        const { silent = false, auto = false } = options;
         if (this.isLoadingMore || !this.nextCursor) return;
         this.isLoadingMore = true;
         const startCount = this.tableData.length;
         try {
-          let cursor = this.nextCursor;
-          let guard = 0;
-          const seenCursors = new Set();
-          while (cursor && guard < 200) {
-            if (seenCursors.has(cursor)) break;
-            seenCursors.add(cursor);
-            const params = this.buildListQueryParams({
-              cursor,
-              limit: this.getListRequestLimit(true),
-              includeStats: true,
-            });
-            const result = await fetch(`./api/manage/list?${params.toString()}`, {
-              method: 'GET',
-              credentials: 'include',
-            }).then((r) => r.json());
-
-            const mapped = (result.keys || []).map((file) => this.normalizeListItem(file));
-            this.mergeListData(mapped);
-            cursor = result.list_complete ? null : result.cursor;
-            this.nextCursor = cursor;
-            if (Number.isFinite(result?.stats?.total)) {
-              this.totalCount = result.stats.total;
-            }
-            guard += 1;
+          const params = this.buildListQueryParams({
+            cursor: this.nextCursor,
+            limit: this.getListRequestLimit(true),
+            includeStats: true,
+          });
+          const result = await fetch(`./api/manage/list?${params.toString()}`, {
+            method: 'GET',
+            credentials: 'include',
+          }).then((r) => r.json());
+          const mapped = (result.keys || []).map((file) => this.normalizeListItem(file));
+          this.mergeListData(mapped);
+          this.nextCursor = result.list_complete ? null : result.cursor;
+          if (Number.isFinite(result?.stats?.total)) {
+            this.totalCount = result.stats.total;
           }
           this.updateStats();
           this.writeFolderCache(this.getFolderCacheKey());
-          if (!this.nextCursor) {
-            const expandedSize = Math.max(
-              this.pageSize,
-              this.filteredTableData.length || this.tableData.length || this.getListRequestLimit(false)
-            );
-            this.pageSize = expandedSize;
-            this.currentPage = 1;
-          }
+          this.normalizeCurrentPage();
           const loaded = Math.max(0, this.tableData.length - startCount);
-          if (this.nextCursor) {
-            this.$message.warning(`数据较多，本次已继续加载 ${loaded} 条，可再次点击加载更多`);
-          } else {
-            this.$message.success(`已加载剩余 ${loaded} 条`);
+          if (!silent) {
+            if (this.nextCursor) {
+              this.$message.success(`已补充 ${loaded} 条数据，可继续翻页`);
+            } else if (!auto) {
+              this.$message.success(`已加载剩余 ${loaded} 条`);
+            }
           }
         } catch {
-          this.$message.error('加载更多失败，请稍后重试');
+          if (!silent) {
+            this.$message.error('加载更多失败，请稍后重试');
+          }
         } finally {
           this.isLoadingMore = false;
         }
@@ -2104,8 +2155,10 @@
       },
       calculatePageSize() {  // 设置页面大小
         const config = {
-          minSize: 100, // 桌面端每页最少展示数量
-          mobileMinSize: 60, // 移动端每页最少展示数量
+          desktopMinSize: 20,
+          desktopMaxSize: 25,
+          mobileMinSize: 10,
+          mobileMaxSize: 14,
           cardWidth: 240,
           ratio: 3/4, // 卡片高宽比
           gap: 20, // 卡片间距
@@ -2121,17 +2174,26 @@
         const cols = Math.max(1, Math.floor(width / (config.cardWidth + config.gap)));
         const cardHeight = Math.max(120, (width / cols - config.gap) * config.ratio);
         const rows = Math.max(1, Math.floor(height / (cardHeight + config.gap)));
-        const minSize = this.isMobileViewport ? config.mobileMinSize : config.minSize;
-        // 设置页面大小
-        this.pageSize = Math.max(rows * cols, minSize);
+        const estimated = rows * cols;
+        if (this.isMobileViewport) {
+          this.pageSize = Math.max(config.mobileMinSize, Math.min(config.mobileMaxSize, estimated));
+        } else {
+          this.pageSize = Math.max(config.desktopMinSize, Math.min(config.desktopMaxSize, estimated));
+        }
       },
       updateWindowWidth() {  // 动态调整页面大小
         this.windowWidth = window.innerWidth;
         this.calculatePageSize();
       },
+      normalizeCurrentPage() {
+        const totalPages = Math.max(1, Math.ceil((this.paginationTotal || 0) / this.pageSize));
+        if (this.currentPage > totalPages) this.currentPage = totalPages;
+        if (this.currentPage < 1) this.currentPage = 1;
+      },
       handleWindowResize() {
         this.updateViewportFlags();
         this.updateWindowWidth();
+        this.normalizeCurrentPage();
         if (this.selectedFiles.length > 0 && !this.isMobileViewport) {
           this.$nextTick(() => this.snapBatchToolbarToBottom());
         }
@@ -2280,6 +2342,7 @@
           this.updateStats();
           this.calculatePageSize();
           this.sortData(this.tableData);
+          this.normalizeCurrentPage();
           this.writeFolderCache(cacheKey);
           if (syncFolders) {
             await this.fetchFolders();
