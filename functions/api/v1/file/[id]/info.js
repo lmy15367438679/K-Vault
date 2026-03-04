@@ -1,5 +1,5 @@
-import { onRequest as fileInfoInternal } from '../../../../file-info/[id].js';
-import { apiError, apiSuccess, decodePathParam } from '../../../../../utils/api-v1.js';
+import { onRequest as fileInfoInternal } from '../../../file-info/[id].js';
+import { apiError, apiSuccess, decodePathParam } from '../../../../utils/api-v1.js';
 
 function mapFileInfo(payload = {}) {
   const fileName = payload.fileName || payload.originalName || payload.fileId || '';
