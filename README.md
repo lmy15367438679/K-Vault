@@ -22,19 +22,22 @@
 
 <table>
   <tr>
-    <td width="50%">
+    <td width="33.33%">
       <img src="demo/登录页面.webp" alt="登录页面" style="width:100%">
     </td>
-    <td width="50%">
-      <img src="demo/首页上传.webp" alt="首页上传" style="width:100%">
+    <td width="33.33%">
+      <img src="demo/首页上传页面.webp" alt="首页上传页面" style="width:100%">
+    </td>
+    <td width="33.33%">
+      <img src="demo/后台管理页面.webp" alt="后台管理页面" style="width:100%">
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="demo/后台面板.webp" alt="后台面板" style="width:100%">
+      <img src="demo/图片浏览页面.webp" alt="图片浏览页面" style="width:100%">
     </td>
     <td width="50%">
-      <img src="demo/视频预览.webp" alt="视频预览" style="width:100%">
+      <img src="demo/WebDAV页面.webp" alt="WebDAV页面" style="width:100%">
     </td>
   </tr>
 </table>
